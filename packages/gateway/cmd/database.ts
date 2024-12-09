@@ -23,14 +23,14 @@ import {
 } from '../src/handlers'
 import { abi } from '../src/abi'
 import { getChain } from '../src/utils'
-import { PostgresRepository } from '../src/repositories'
+import { MongoRepository } from '../src/repositories'
 import { withLogger, withSigner } from '../src/middlewares'
-import { NewDataSource } from '../src/datasources/postgres'
 import {
   OwnershipValidator,
   SignatureRecover,
   EthereumClient,
 } from '../src/services'
+import mongoose from 'mongoose'
 
 config({
   path: process.env.ENV_FILE || '../../../.env',
@@ -38,8 +38,7 @@ config({
 
 const {
   DATABASE_URL: dbUrl,
-  GATEWAY_PRIVATE_KEY:
-    privateKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+  GATEWAY_PRIVATE_KEY: privateKey,
   RPC_URL: rpcURL = 'http://localhost:8545',
   CHAIN_ID: chainId = '31337',
   REGISTRY_ADDRESS: registryAddress,
@@ -74,10 +73,13 @@ const _ = (async () => {
       }),
   )
 
-  const dbclient = await NewDataSource(dbUrl, {
-    debug: DEBUG === 'true',
-  }).initialize()
-  const repo = new PostgresRepository(dbclient)
+  const connection = mongoose.createConnection(dbUrl, {})
+
+  connection.on('error', console.error.bind(console, 'Connection error:'))
+  connection.once('open', () => {
+    console.log('Connected to MongoDB')
+  })
+  const repo: any = new MongoRepository(connection)
 
   const signatureRecover = new SignatureRecover()
   const ownershipValidator = new OwnershipValidator(
@@ -87,9 +89,8 @@ const _ = (async () => {
   )
 
   const server = new ccip.Server()
-  server.app.use(withSigner(privateKey as Hex))
+  server.app.use(withSigner(repo, privateKey as Hex))
   server.app.use(withLogger({ abi, debug: DEBUG === 'true' }))
-
   server.add(
     abi,
     withQuery(),

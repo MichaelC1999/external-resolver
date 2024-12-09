@@ -1,4 +1,4 @@
-import { namehash } from 'viem'
+import { encodeAbiParameters, keccak256, namehash, toHex } from 'viem'
 
 import * as ccip from '@blockful/ccip-server'
 
@@ -9,16 +9,12 @@ import {
   TypedSignature,
   TransferDomainProps,
 } from '../types'
-import {
-  parseEncodedAddressCalls,
-  parseEncodedContentHashCall,
-  parseEncodedTextCalls,
-} from '../services'
 import { Domain } from '../entities'
-import { decodeDNSName, extractParentFromName } from '../utils'
+import { formatTTL } from '../services'
+import { decodeDNSName } from '../utils'
 
 interface WriteRepository {
-  register(params: RegisterDomainProps)
+  register(params: any)
   transfer(params: TransferDomainProps)
 }
 
@@ -30,37 +26,61 @@ export function withRegisterDomain(
   repo: WriteRepository & ReadRepository,
 ): ccip.HandlerDescription {
   return {
-    type: 'register(bytes calldata name, address owner, uint256 duration, bytes32 secret, address resolver, bytes[] calldata data, bool reverseRecord, uint16 fuses, bytes memory extraData)',
+    type: 'register(bytes calldata name, address owner, uint256 duration, bytes32 secret, address resolver, bytes[] calldata data, bool reverseRecord, uint16 fuses, bytes memory extraData) returns (string memory,bytes32, bytes32, bytes[] memory)',
     func: async (
-      { name, duration: ttl, owner, data },
+      { name, owner, data },
       { signature }: { signature: TypedSignature },
     ) => {
       try {
         name = decodeDNSName(name)
-        const node = namehash(name)
+        const returnObj = await repo.register({ name, owner, data })
+        const userBytes: any[] = []
+        for (let idx = 0; idx < 5; idx++) {
+          if (
+            !Object.keys(returnObj).includes(
+              `partner__[${idx}]__wallet__address`,
+            )
+          ) {
+            continue
+          }
 
-        const existingDomain = await repo.getDomain({ node })
-        if (existingDomain) {
-          return { error: { message: 'Domain already exists', status: 400 } }
+          // Extract relevant properties for the current partner
+          let roleDataBytes: any = '0x'
+          const roles: string[] = []
+          if (returnObj['partner__[' + idx + ']__is__manager'] === 'true') {
+            roles.push('manager')
+          }
+          if (returnObj['partner__[' + idx + ']__is__signer'] === 'true') {
+            roles.push('signer')
+          }
+
+          if (roles.length > 0) {
+            roles.forEach((role) => {
+              const encRole = encodeAbiParameters([{ type: 'string' }], [role])
+              const roleHash = keccak256(encRole).slice(2, 66)
+              roleDataBytes += roleHash
+            })
+          }
+          const encodedUserData: any = encodeAbiParameters(
+            [{ type: 'address' }, { type: 'uint256' }, { type: 'bytes' }],
+            [
+              returnObj[`partner__[${idx}]__wallet__address`],
+              returnObj[`partner__[${idx}]__shares`],
+              roleDataBytes,
+            ],
+          )
+          userBytes.push(encodedUserData)
         }
 
-        const addresses = parseEncodedAddressCalls(data, signature)
-        const texts = parseEncodedTextCalls(data, signature)
-        const contenthash = parseEncodedContentHashCall(data, signature)
-
-        await repo.register({
+        const callbackData = [
           name,
-          node,
-          ttl: ttl.toString(),
-          owner,
-          contenthash,
-          parent: namehash(extractParentFromName(name)),
-          resolver: signature.domain.verifyingContract,
-          resolverVersion: signature.domain.version,
-          addresses,
-          texts,
-        })
+          returnObj.nodeHash,
+          returnObj.constitutionHash,
+          userBytes,
+        ]
+        return { data: callbackData, extraData: formatTTL(3600 * 24 * 100) }
       } catch (err) {
+        console.log(err)
         return {
           error: { message: 'Unable to register new domain', status: 400 },
         }

@@ -28,30 +28,30 @@ services:
     depends_on:
       - db
 
-  db:
-    image: postgres:16.2
-    container_name: gateway-postgres-db
-    ports:
-      - '5432:5432'
-    volumes:
-      - db_data:/data/db
-    restart: always
-    environment:
-      POSTGRES_USER: blockful
-      POSTGRES_PASSWORD: ensdomains
-      POSTGRES_DB: ensdomains
+  # db:
+  #   image: postgres:16.2
+  #   container_name: gateway-postgres-db
+  #   ports:
+  #     - '5432:5432'
+  #   volumes:
+  #     - db_data:/data/db
+  #   restart: always
+  #   environment:
+  #     POSTGRES_USER: blockful
+  #     POSTGRES_PASSWORD: ensdomains
+  #     POSTGRES_DB: ensdomains
 
-  db-arb:
-    image: postgres:16.2
-    ports:
-      - '5433:5432'
-    volumes:
-      - arb_db_data:/data/db
-    restart: always
-    environment:
-      POSTGRES_USER: blockful
-      POSTGRES_PASSWORD: ensdomains
-      POSTGRES_DB: ensdomains
+  # db-arb:
+  #   image: postgres:16.2
+  #   ports:
+  #     - '5433:5432'
+  #   volumes:
+  #     - arb_db_data:/data/db
+  #   restart: always
+  #   environment:
+  #     POSTGRES_USER: blockful
+  #     POSTGRES_PASSWORD: ensdomains
+  #     POSTGRES_DB: ensdomains
 
 networks:
   local:

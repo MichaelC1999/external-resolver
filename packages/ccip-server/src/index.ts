@@ -121,7 +121,11 @@ export class Server {
                 args[0].map(async (data: any) => {
                   let error
                   try {
-                    const { status, body } = await this.call({ to, data, signature })
+                    const { status, body } = await this.call({
+                      to,
+                      data,
+                      signature,
+                    })
                     if (status === 200) return body.data // Q: should this be 2XX?
                     error = body.message || 'unknown error'
                   } catch (err) {
@@ -222,9 +226,8 @@ export class Server {
   async call(call: RPCCall): Promise<RPCResponse> {
     const calldata = hexlify(call.data)
     const selector = calldata.slice(0, 10).toLowerCase()
-
     // Find a function handler for this selector
-    const handler = this.handlers[selector]
+    const handler: any = this.handlers[selector]
     if (!handler) {
       return {
         status: 404,
@@ -250,20 +253,22 @@ export class Server {
       }
     }
     // Encode return data
-    return {
-      status: 200,
-      body: {
-        data:
-          handler.type.outputs && result?.data?.length
-            ? hexlify(
+    const body = {
+      data:
+        handler.type.outputs && result?.data?.length
+          ? hexlify(
               ethers.utils.defaultAbiCoder.encode(
                 handler.type.outputs,
                 result.data,
               ),
             )
-            : '0x',
-        ttl: result?.extraData,
-      },
+          : '0x',
+      ttl: result?.extraData,
+    }
+
+    return {
+      status: 200,
+      body,
     }
   }
 }

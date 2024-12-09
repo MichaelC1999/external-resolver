@@ -52,6 +52,7 @@
     "express-mung": "^0.5.1",
     "graphql": "^16.9.0",
     "graphql-scalars": "^1.23.0",
+    "mongoose": "^8.8.3",
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.2",
     "typeorm": "^0.3.20",

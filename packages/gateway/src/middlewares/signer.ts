@@ -6,8 +6,12 @@ import {
   Hex,
   encodeAbiParameters,
   parseAbiParameters,
+  decodeAbiParameters,
+  toHex,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
+import { formatTTL } from '../services'
+import { packetToBytes } from 'viem/ens'
 
 /**
  * sign read data from the gateway in order to verify authenticity on the
@@ -17,15 +21,57 @@ import { privateKeyToAccount } from 'viem/accounts'
  * @param {string[]} function signatures that the middleware should be applied to
  * @return {*}
  */
-export function withSigner(privateKey: Hex) {
+export function withSigner(repo: any, privateKey: Hex) {
   return mung.jsonAsync(
     async (body: Record<string, unknown>, req: HTTPRequest) => {
       const sender = req.method === 'GET' ? req.params.sender : req.body.sender
       const callData =
         req.method === 'GET' ? req.params.callData : req.body.data
-
-      if (!callData || body.data === '0x' || !body.ttl) {
+      if (!body.ttl) body.ttl = formatTTL(3600 * 24 * 100)
+      if (!callData || body.data === '0x') {
         return body
+      }
+
+      // If setText/register, the constitution hash can be done on the processing
+      // If multicall, should be done here to hash the entire new record
+      // extract the nodehash from the calldata
+      // fetch the entire record with nodehash
+      // hash the constitution, save it
+      // Join the nodehash with the constituion, return the bytes
+
+      let nodeHash = '0x'
+      if (callData.slice(0, 10) === '0x10f13a8c' && body.data) {
+        const data = body?.data as Hex
+        nodeHash = data.slice(0, 66)
+      }
+
+      if (
+        callData.slice(0, 10) === '0xac9650d8' &&
+        callData.includes('10f13a8c')
+      ) {
+        const dec = decodeAbiParameters([{ type: 'bytes[]' }], body.data as Hex)
+        const exampleBytes = dec[0][dec[0].length - 1]
+        nodeHash = exampleBytes.slice(0, 66)
+      }
+
+      const recordObj: any = await repo.fetchAndPrepareRecord({ nodeHash })
+
+      // userDataArray is encoded loop of (address userAddress, uint256 userShares, bytes memory roleData)
+      const constitutionHash = keccak256(
+        toHex(packetToBytes(JSON.stringify(recordObj))),
+      )
+      await repo.EntityResolverRecord.findOneAndUpdate(
+        { nodeHash },
+        { constitutionHash },
+        { new: true },
+      )
+
+      if (
+        (callData.slice(0, 10) === '0xac9650d8' &&
+          callData.includes('10f13a8c')) ||
+        callData.slice(0, 10) === '0x10f13a8c'
+      ) {
+        body.data = (nodeHash + constitutionHash.slice(2, 66)) as Hex
       }
 
       const msgHash = makeMessageHash(
